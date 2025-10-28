@@ -1,0 +1,5 @@
+{
+  "name": "AI Werewolf Game",
+  "description": "A simulation environment for AI agents to play a complete game of Werewolf, managed by a central game orchestrator. This application visualizes the game flow, including automated role assignment, discussions, voting, and results logging.",
+  "requestFramePermissions": []
+}
