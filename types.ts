@@ -32,3 +32,5 @@ export interface LogEntry {
     rawSpeech?: string; // For untranslated AI speech
     speaker?: { name: string; role: Role }; // For speaker info
 }
+
+export type WolfStrategy = 'jump-claim' | 'charger' | 'back-hook';

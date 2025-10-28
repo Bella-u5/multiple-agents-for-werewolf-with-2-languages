@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useContext, useRef } from 'react';
-import { Player, Role, GameState, GameConfig, LogEntry } from '../types';
-import * as agent from '../services/agents';
+import { Player, Role, GameState, GameConfig, LogEntry, WolfStrategy } from '../types';
+import { AIAgent, VillagerAgent, SeerAgent, WolfAgent } from '../services/agents';
 import { LanguageContext } from '../contexts/LanguageContext';
 import { useTranslations } from './useTranslations';
 
@@ -22,7 +22,9 @@ export const useGameOrchestrator = () => {
   const [day, setDay] = useState(1);
   const [winner, setWinner] = useState<string | null>(null);
   const [currentAction, setCurrentAction] = useState<string | null>(null);
+  
   const isRunningPhase = useRef(false);
+  const agentsRef = useRef<Record<number, AIAgent>>({});
 
   const { language } = useContext(LanguageContext);
   const t = useTranslations(language);
@@ -36,9 +38,14 @@ export const useGameOrchestrator = () => {
         if (entry.key === 'playerSpeech' && entry.speaker && entry.rawSpeech) {
             return `${entry.speaker.name} said: "${entry.rawSpeech}"`;
         }
-        return `${entry.key} ${entry.params ? JSON.stringify(entry.params) : ''}`;
+        // A simplified representation for the AI's context
+        const template = t.log[entry.key];
+        if (typeof template === 'function') {
+            return template(entry.params);
+        }
+        return template || `${entry.key} ${entry.params ? JSON.stringify(entry.params) : ''}`;
     });
-  }, [gameLog]);
+  }, [gameLog, t]);
 
   const setupGame = useCallback((config: GameConfig) => {
     const totalPlayers = config.numWerewolves + config.numVillagers + 1;
@@ -57,6 +64,42 @@ export const useGameOrchestrator = () => {
       isAlive: true,
       isHost: false,
     }));
+    
+    // Assign strategies to werewolves
+    const wolves = newPlayers.filter(p => p.role === Role.WEREWOLF);
+    const shuffledWolves = shuffleArray(wolves);
+    const strategies: WolfStrategy[] = [];
+    if (shuffledWolves.length > 0) {
+        strategies.push('jump-claim');
+    }
+    if (shuffledWolves.length > 1) {
+        strategies.push('charger');
+    }
+    while (strategies.length < shuffledWolves.length) {
+        strategies.push('back-hook');
+    }
+
+    const wolfStrategies = new Map<number, WolfStrategy>();
+    shuffledWolves.forEach((wolf, index) => {
+        wolfStrategies.set(wolf.id, strategies[index]);
+    });
+
+    // Create agent instances
+    const newAgents: Record<number, AIAgent> = {};
+    for (const player of newPlayers) {
+        switch (player.role) {
+            case Role.WEREWOLF:
+                newAgents[player.id] = new WolfAgent(player, wolfStrategies.get(player.id)!);
+                break;
+            case Role.SEER:
+                newAgents[player.id] = new SeerAgent(player);
+                break;
+            case Role.VILLAGER:
+                newAgents[player.id] = new VillagerAgent(player);
+                break;
+        }
+    }
+    agentsRef.current = newAgents;
 
     setPlayers(newPlayers);
     setGameState(GameState.NIGHT);
@@ -76,6 +119,7 @@ export const useGameOrchestrator = () => {
     setDay(1);
     setWinner(null);
     setCurrentAction(null);
+    agentsRef.current = {};
   }, []);
   
   const checkGameOverAndContinue = useCallback((currentPlayers: Player[]) => {
@@ -132,10 +176,13 @@ export const useGameOrchestrator = () => {
 
       const werewolves = players.filter(p => p.role === Role.WEREWOLF && p.isAlive);
       let eliminatedPlayerId: number | null = null;
+      
       if (werewolves.length > 0) {
         setCurrentAction(t.actions.werewolvesChoosing);
         await pause(1500);
-        const targetId = await agent.getWerewolfTarget(werewolves, players, getGameLogAsStringArray(), language);
+        // Use the first wolf's agent to decide for the pack
+        const wolfAgent = agentsRef.current[werewolves[0].id] as WolfAgent;
+        const targetId = await wolfAgent.nightAction(players, getGameLogAsStringArray(), language);
         eliminatedPlayerId = targetId;
         addLog({ key: 'werewolvesChooseTarget' });
       } else {
@@ -148,7 +195,8 @@ export const useGameOrchestrator = () => {
       if (seer) {
         setCurrentAction(t.actions.seerSeeking);
         await pause(1500);
-        const targetId = await agent.getSeerCheck(seer, players, getGameLogAsStringArray(), language);
+        const seerAgent = agentsRef.current[seer.id] as SeerAgent;
+        const targetId = await seerAgent.nightAction(players, getGameLogAsStringArray(), language);
         const target = players.find(p => p.id === targetId);
         if (target) {
           addLog({ key: 'seerChecks', params: { targetName: target.name, targetRole: t.roles[target.role] } });
@@ -185,7 +233,8 @@ export const useGameOrchestrator = () => {
           setCurrentAction(t.actions.playerThinking(player.name));
           await pause(2000);
           setCurrentAction(t.actions.playerSpeaking(player.name));
-          const speech = await agent.getPlayerSpeech(player, players, getGameLogAsStringArray(), day, language);
+          const agent = agentsRef.current[player.id];
+          const speech = await agent.makeStatement(players, getGameLogAsStringArray(), day, language);
           addLog({ key: 'playerSpeech', rawSpeech: speech, speaker: { name: player.name, role: player.role }});
           await pause(3000);
       }
@@ -205,7 +254,8 @@ export const useGameOrchestrator = () => {
       for (const voter of livingPlayers) {
           setCurrentAction(t.actions.playerVoting(voter.name));
           await pause(1500);
-          const targetId = await agent.getPlayerVote(voter, players, getGameLogAsStringArray(), language);
+          const agent = agentsRef.current[voter.id];
+          const targetId = await agent.castVote(players, getGameLogAsStringArray(), language);
           if (targetId !== null) {
               votes[targetId] = (votes[targetId] || 0) + 1;
               const target = players.find(p => p.id === targetId);
