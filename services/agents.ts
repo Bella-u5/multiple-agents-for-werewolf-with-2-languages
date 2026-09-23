@@ -2,16 +2,47 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { Player, Role, WolfStrategy } from '../types';
 import { Language } from '../contexts/LanguageContext';
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 const model = 'gemini-2.5-flash';
+
+/**
+ * API key resolution: BYOK (bring-your-own-key, stored in localStorage) first,
+ * then the build-time env var (local dev only). This keeps the deployed site
+ * free of any hard-coded key, while still allowing one-key runs via .env.local.
+ */
+let cachedKey: string | null = null;
+let ai: GoogleGenAI | null = null;
+
+const getApiKey = (): string | null => {
+    let local: string | null = null;
+    try {
+        local = localStorage.getItem('gemini_api_key');
+    } catch { /* SSR / restricted storage */ }
+    const key = (local && local.trim()) || process.env.API_KEY || null;
+    return key && key.trim() ? key : null;
+};
+
+const getAI = (): GoogleGenAI | null => {
+    const key = getApiKey();
+    if (!key) return null;
+    if (!ai || cachedKey !== key) {
+        ai = new GoogleGenAI({ apiKey: key });
+        cachedKey = key;
+    }
+    return ai;
+};
+
+/** Exposed for UI: is a key configured (live LLM mode)? */
+export const hasApiKey = (): boolean => getApiKey() !== null;
 
 // --- UTILITY FUNCTIONS ---
 
 const getLanguageName = (lang: Language) => lang === 'zh' ? 'Chinese' : 'English';
 
 const generateJsonContent = async (prompt: string, schema: any, fallback: any) => {
+    const client = getAI();
+    if (!client) return fallback; // offline demo mode: no key configured
     try {
-        const response = await ai.models.generateContent({
+        const response = await client.models.generateContent({
             model,
             contents: prompt,
             config: {
@@ -28,8 +59,10 @@ const generateJsonContent = async (prompt: string, schema: any, fallback: any) =
 };
 
 const generateTextContent = async (prompt: string, fallback: string): Promise<string> => {
+    const client = getAI();
+    if (!client) return fallback; // offline demo mode: no key configured
     try {
-        const response = await ai.models.generateContent({
+        const response = await client.models.generateContent({
             model,
             contents: prompt,
         });

@@ -19,6 +19,19 @@ const en = {
     seerInfo: 'Including 1 Seer',
     startGame: 'Start Game',
 
+    // LLM Engine / API Key
+    llmEngine: 'LLM Engine (Gemini)',
+    llmConfigured: 'Live LLM mode',
+    llmOffline: 'Offline demo mode',
+    apiKeyLabel: 'Gemini API Key',
+    apiKeyPlaceholder: 'Paste your API key — stored only in your browser',
+    saveKey: 'Save',
+    clearKey: 'Clear',
+    keySaved: 'Key saved — agents will play with the real LLM.',
+    keyCleared: 'Key removed — back to offline demo mode.',
+    getApiKey: 'Get a free key at Google AI Studio',
+    offlineNotice: 'No API key detected: the game still runs end-to-end, but agent speeches come from built-in strategy templates. Paste a free Gemini API key above to watch real LLM agents play.',
+
     // Player Card
     roleHidden: 'Role Hidden',
     roles: {
@@ -92,6 +105,19 @@ const zh: typeof en = {
     totalPlayers: '总玩家数',
     seerInfo: '（包含 1 个预言家）',
     startGame: '开始游戏',
+
+    // LLM Engine / API Key
+    llmEngine: 'LLM 引擎（Gemini）',
+    llmConfigured: '真实 LLM 对局',
+    llmOffline: '离线演示模式',
+    apiKeyLabel: 'Gemini API Key',
+    apiKeyPlaceholder: '粘贴你的 API Key —— 仅保存在本地浏览器',
+    saveKey: '保存',
+    clearKey: '清除',
+    keySaved: 'Key 已保存，Agent 将以真实 LLM 进行对局。',
+    keyCleared: 'Key 已移除，回到离线演示模式。',
+    getApiKey: '在 Google AI Studio 免费获取',
+    offlineNotice: '未检测到 API Key：游戏仍可完整运行，但 Agent 发言由内置策略模板生成。在上方填入免费的 Gemini API Key，即可观看真实 LLM Agent 博弈。',
 
     // Player Card
     roleHidden: '身份隐藏',
