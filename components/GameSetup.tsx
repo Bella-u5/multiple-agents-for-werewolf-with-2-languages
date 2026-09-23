@@ -29,7 +29,7 @@ export const GameSetup: React.FC<GameSetupProps> = ({ onStartGame }) => {
   const handleSaveKey = () => {
     const trimmed = apiKeyInput.trim();
     if (trimmed) {
-      try { localStorage.setItem('gemini_api_key', trimmed); } catch { /* ignore */ }
+      try { localStorage.setItem('deepseek_api_key', trimmed); } catch { /* ignore */ }
       setKeyConfigured(true);
       setKeyNotice(t.keySaved);
     }
@@ -37,7 +37,7 @@ export const GameSetup: React.FC<GameSetupProps> = ({ onStartGame }) => {
   };
 
   const handleClearKey = () => {
-    try { localStorage.removeItem('gemini_api_key'); } catch { /* ignore */ }
+    try { localStorage.removeItem('deepseek_api_key'); } catch { /* ignore */ }
     setKeyConfigured(false);
     setKeyNotice(t.keyCleared);
     setApiKeyInput('');
@@ -83,7 +83,7 @@ export const GameSetup: React.FC<GameSetupProps> = ({ onStartGame }) => {
           )}
         </div>
         <a
-          href="https://aistudio.google.com/apikey"
+          href="https://platform.deepseek.com/api_keys"
           target="_blank"
           rel="noreferrer"
           className="inline-block mt-2 text-xs text-blue-400 hover:text-blue-300 underline"

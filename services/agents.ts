@@ -1,34 +1,20 @@
-import { GoogleGenAI, Type } from "@google/genai";
 import { Player, Role, WolfStrategy } from '../types';
 import { Language } from '../contexts/LanguageContext';
 
-const model = 'gemini-2.5-flash';
+const model = 'deepseek-chat';
+const apiBase = 'https://api.deepseek.com/v1/chat/completions';
 
 /**
- * API key resolution: BYOK (bring-your-own-key, stored in localStorage) first,
- * then the build-time env var (local dev only). This keeps the deployed site
- * free of any hard-coded key, while still allowing one-key runs via .env.local.
+ * API key resolution: BYOK (bring-your-own-key, stored in localStorage).
+ * This keeps the deployed site free of any hard-coded key.
  */
-let cachedKey: string | null = null;
-let ai: GoogleGenAI | null = null;
-
 const getApiKey = (): string | null => {
     let local: string | null = null;
     try {
-        local = localStorage.getItem('gemini_api_key');
+        local = localStorage.getItem('deepseek_api_key');
     } catch { /* SSR / restricted storage */ }
-    const key = (local && local.trim()) || process.env.API_KEY || null;
-    return key && key.trim() ? key : null;
-};
-
-const getAI = (): GoogleGenAI | null => {
-    const key = getApiKey();
-    if (!key) return null;
-    if (!ai || cachedKey !== key) {
-        ai = new GoogleGenAI({ apiKey: key });
-        cachedKey = key;
-    }
-    return ai;
+    const key = local && local.trim() ? local.trim() : null;
+    return key;
 };
 
 /** Exposed for UI: is a key configured (live LLM mode)? */
@@ -38,37 +24,55 @@ export const hasApiKey = (): boolean => getApiKey() !== null;
 
 const getLanguageName = (lang: Language) => lang === 'zh' ? 'Chinese' : 'English';
 
+const callDeepSeek = async (prompt: string, jsonMode: boolean): Promise<string> => {
+    const apiKey = getApiKey();
+    if (!apiKey) throw new Error('No API key configured');
+
+    const body: any = {
+        model,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.8,
+        max_tokens: 500,
+    };
+    if (jsonMode) {
+        body.response_format = { type: 'json_object' };
+    }
+
+    const response = await fetch(apiBase, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+        throw new Error(`DeepSeek API error: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.choices[0].message.content.trim();
+};
+
 const generateJsonContent = async (prompt: string, schema: any, fallback: any) => {
-    const client = getAI();
-    if (!client) return fallback; // offline demo mode: no key configured
+    if (!getApiKey()) return fallback; // offline demo mode: no key configured
     try {
-        const response = await client.models.generateContent({
-            model,
-            contents: prompt,
-            config: {
-                responseMimeType: 'application/json',
-                responseSchema: schema,
-            },
-        });
-        const jsonText = response.text.trim();
-        return JSON.parse(jsonText);
+        const jsonPrompt = prompt + '\n\nRespond ONLY with a valid JSON object, no additional text.';
+        const text = await callDeepSeek(jsonPrompt, true);
+        return JSON.parse(text);
     } catch (error) {
-        console.error("Error generating JSON from Gemini:", error, "Prompt:", prompt);
+        console.error("Error generating JSON from DeepSeek:", error, "Prompt:", prompt);
         return fallback;
     }
 };
 
 const generateTextContent = async (prompt: string, fallback: string): Promise<string> => {
-    const client = getAI();
-    if (!client) return fallback; // offline demo mode: no key configured
+    if (!getApiKey()) return fallback; // offline demo mode: no key configured
     try {
-        const response = await client.models.generateContent({
-            model,
-            contents: prompt,
-        });
-        return response.text;
+        return await callDeepSeek(prompt, false);
     } catch (error) {
-        console.error("Error generating text from Gemini:", error, "Prompt:", prompt);
+        console.error("Error generating text from DeepSeek:", error, "Prompt:", prompt);
         return fallback;
     }
 }
@@ -236,9 +240,8 @@ ${getGameLogSummary(gameLog)}
 
 Choose the most strategic player to eliminate. Consider who might be the Seer or a leader. Provide only the ID of your target.`;
 
-        const schema = { type: Type.OBJECT, properties: { targetId: { type: Type.NUMBER } }, required: ['targetId'] };
         const fallback = { targetId: potentialTargets[Math.floor(Math.random() * potentialTargets.length)].id };
-        const result = await generateJsonContent(prompt, schema, fallback);
+        const result = await generateJsonContent(prompt, null, fallback);
         return potentialTargets.some(p => p.id === result.targetId) ? result.targetId : fallback.targetId;
     }
 }
@@ -279,9 +282,8 @@ ${getGameLogSummary(gameLog)}
 
 Provide the ID of the player you will check.`;
         
-        const schema = { type: Type.OBJECT, properties: { targetId: { type: Type.NUMBER } }, required: ['targetId'] };
         const fallback = { targetId: potentialTargets[Math.floor(Math.random() * potentialTargets.length)].id };
-        const result = await generateJsonContent(prompt, schema, fallback);
+        const result = await generateJsonContent(prompt, null, fallback);
         return potentialTargets.some(p => p.id === result.targetId) ? result.targetId : fallback.targetId;
     }
 }
@@ -329,8 +331,7 @@ ${getGameLogSummary(gameLog)}
 
 Provide the ID of the player you are voting for.`;
     
-    const schema = { type: Type.OBJECT, properties: { targetId: { type: Type.NUMBER } }, required: ['targetId'] };
     const fallback = { targetId: potentialTargets[Math.floor(Math.random() * potentialTargets.length)].id };
-    const result = await generateJsonContent(prompt, schema, fallback);
+    const result = await generateJsonContent(prompt, null, fallback);
     return potentialTargets.some(p => p.id === result.targetId) ? result.targetId : fallback.targetId;
 }
